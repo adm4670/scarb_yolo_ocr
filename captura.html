@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Captura de Imagens Automática</title>
+
+  <style>
+    body {
+      background: #111;
+      color: #fff;
+      font-family: sans-serif;
+      text-align: center;
+    }
+
+    video {
+      width: 720px;
+      max-width: 100%;
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+
+    button {
+      margin: 6px;
+      padding: 10px 16px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h2>📸 Captura de imagens automática</h2>
+
+  <video id="video" autoplay playsinline></video>
+  <br>
+  <button id="startBtn">▶️ Iniciar</button>
+  <button id="stopBtn" disabled>⏹ Parar</button>
+
+  <canvas id="capture" style="display:none;"></canvas>
+
+  <script>
+    const video = document.getElementById("video");
+    const captureCanvas = document.getElementById("capture");
+    const ctx = captureCanvas.getContext("2d");
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+
+    const BACKEND_URL = "http://localhost:8000/capture"; // Rota para salvar imagens
+
+    let captureInterval = null;
+
+    // Abrir câmera
+    navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+      audio: false
+    })
+    .then(stream => { video.srcObject = stream; })
+    .catch(err => { alert("Erro ao acessar câmera: " + err); });
+
+    // Função para capturar frame
+    async function captureFrame() {
+      if (video.videoWidth === 0) return;
+
+      captureCanvas.width = video.videoWidth;
+      captureCanvas.height = video.videoHeight;
+
+      ctx.drawImage(video, 0, 0);
+
+      const jpegBase64 = captureCanvas.toDataURL("image/jpeg", 0.9);
+
+      try {
+        const res = await fetch(BACKEND_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: jpegBase64 })
+        });
+
+        const data = await res.json();
+        if (data.status === "ok") {
+          console.log(`✅ Imagem salva: ${data.filename}`);
+        }
+      } catch (err) {
+        console.error("Erro ao enviar frame:", err);
+      }
+    }
+
+    // Iniciar captura automática
+    startBtn.onclick = () => {
+      if (captureInterval) return;
+
+      captureInterval = setInterval(captureFrame, 100); // 1 frame por segundo
+
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+    };
+
+    // Parar captura
+    stopBtn.onclick = () => {
+      clearInterval(captureInterval);
+      captureInterval = null;
+
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+    };
+  </script>
+
+</body>
+</html>

@@ -1,1 +1,1 @@
-# scarb_yolo_ocr
+uvicorn backend:app --reload

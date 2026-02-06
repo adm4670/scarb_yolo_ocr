@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Câmera + YOLO (Backend Render)</title>
+
+  <style>
+    body {
+      background: #111;
+      color: #fff;
+      font-family: sans-serif;
+      text-align: center;
+    }
+
+    video, img {
+      width: 720px;
+      max-width: 100%;
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+
+    button {
+      margin: 6px;
+      padding: 10px 16px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h2>📷 Câmera + YOLO (Render no Backend)</h2>
+
+  <!-- Video usado apenas para captura -->
+  <video id="video" autoplay playsinline></video>
+
+  <!-- Resultado do backend -->
+  <img id="result" style="display:none;" />
+
+  <br>
+
+  <button id="startBtn">▶️ Iniciar</button>
+  <button id="stopBtn" disabled>⏹ Parar</button>
+
+  <canvas id="capture" style="display:none;"></canvas>
+
+  <script>
+    const video = document.getElementById("video");
+    const resultImg = document.getElementById("result");
+    const capture = document.getElementById("capture");
+    const ctx = capture.getContext("2d");
+
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+
+    const BACKEND_URL = "http://localhost:8000/frame";
+
+    let interval = null;
+
+    // ===============================
+    // Abrir câmera
+    // ===============================
+    navigator.mediaDevices.getUserMedia({
+      video: {
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        frameRate: { ideal: 30 }
+      },
+      audio: false
+    })
+    .then(stream => {
+      video.srcObject = stream;
+    })
+    .catch(err => {
+      alert("Erro ao acessar câmera: " + err);
+    });
+
+    // ===============================
+    // Enviar frame
+    // ===============================
+    async function sendFrame() {
+      if (video.videoWidth === 0) return;
+
+      capture.width = video.videoWidth;
+      capture.height = video.videoHeight;
+
+      ctx.drawImage(video, 0, 0);
+      const jpegBase64 = capture.toDataURL("image/jpeg", 0.85);
+
+      try {
+        const res = await fetch(BACKEND_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: jpegBase64 })
+        });
+
+        const data = await res.json();
+
+        if (data.image) {
+          resultImg.src = data.image;
+          resultImg.style.display = "block";
+          video.style.display = "none";
+        }
+
+      } catch (err) {
+        console.error("Erro ao enviar frame:", err);
+      }
+    }
+
+    // ===============================
+    // Controles
+    // ===============================
+    startBtn.onclick = () => {
+      if (interval) return;
+
+      interval = setInterval(sendFrame, 150); // ~6 FPS (ideal p/ YOLO)
+
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+    };
+
+    stopBtn.onclick = () => {
+      clearInterval(interval);
+      interval = null;
+
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+
+      resultImg.style.display = "none";
+      video.style.display = "block";
+    };
+  </script>
+
+</body>
+</html>
