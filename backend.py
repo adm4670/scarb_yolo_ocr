@@ -34,6 +34,7 @@ BASE_DIR = Path(__file__).resolve().parent
 INDEX_FILE = BASE_DIR / "index.html"
 CAPTURE_FILE = BASE_DIR / "captura.html"
 ROTULAGEM_FILE = BASE_DIR / "rotulagem.html"
+CALIBRAGEM_FILE = BASE_DIR / "calibragem.html"
 
 @app.get("/", response_class=HTMLResponse)
 def serve_index():
@@ -46,6 +47,10 @@ def serve_capture():
 @app.get("/rotulagem", response_class=HTMLResponse)
 def serve_capture():
     return ROTULAGEM_FILE.read_text(encoding="utf-8")
+
+@app.get("/calibragem", response_class=HTMLResponse)
+def serve_capture():
+    return CALIBRAGEM_FILE.read_text(encoding="utf-8")
 
 # ===============================
 # YOLO – GPU
@@ -76,7 +81,6 @@ def receive_frame(payload: FramePayload):
     image_bytes = base64.b64decode(encoded)
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     frame = image.copy()
-    h, w = frame.height, frame.width
 
     # ===============================
     # Inferência YOLO
@@ -92,39 +96,71 @@ def receive_frame(payload: FramePayload):
     draw = ImageDraw.Draw(frame)
     detections_count = 0
 
+    LIME_GREEN = (0, 255, 0)
+
     for r in results:
         if r.boxes is None:
             continue
+
         for box, cls_id, conf in zip(r.boxes.xyxy, r.boxes.cls, r.boxes.conf):
+
+            # ===============================
+            # FILTRA APENAS A CLASSE 0
+            # ===============================
+            if int(cls_id) != 0:
+                continue
+
             x1, y1, x2, y2 = map(int, box.tolist())
             class_name = model.names[int(cls_id)]
             confidence = float(conf)
             label = f"{class_name} {confidence:.2f}"
 
-            # ===============================
-            # PRINT do nome da label
-            # ===============================
             print(f"🎯 Detectado: {class_name} com confiança {confidence:.2f}")
 
             # ===============================
-            # Desenho no frame
+            # Bounding box verde-limão
             # ===============================
-            draw.rectangle([(x1, y1), (x2, y2)], outline="red", width=3)
-            text_size = draw.textbbox((0, 0), label)
-            draw.rectangle([(x1, y1 - text_size[3] - 6), (x1 + text_size[2] + 6, y1)], fill="red")
-            draw.text((x1 + 3, y1 - text_size[3] - 3), label, fill="white")
+            draw.rectangle(
+                [(x1, y1), (x2, y2)],
+                outline=LIME_GREEN,
+                width=3
+            )
+
+            # ===============================
+            # Label verde-limão
+            # ===============================
+            text_bbox = draw.textbbox((0, 0), label)
+            text_width = text_bbox[2] - text_bbox[0]
+            text_height = text_bbox[3] - text_bbox[1]
+
+            draw.rectangle(
+                [(x1, y1 - text_height - 6),
+                 (x1 + text_width + 6, y1)],
+                fill=LIME_GREEN
+            )
+
+            draw.text(
+                (x1 + 3, y1 - text_height - 3),
+                label,
+                fill="black"
+            )
 
             detections_count += 1
 
     if detections_count:
         print(f"✅ Total de detecções: {detections_count}")
 
+    # ===============================
     # Encode de volta para base64
+    # ===============================
     buffer = io.BytesIO()
     frame.save(buffer, format="JPEG", quality=85)
     encoded_image = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-    return {"status": "ok", "image": f"data:image/jpeg;base64,{encoded_image}"}
+    return {
+        "status": "ok",
+        "image": f"data:image/jpeg;base64,{encoded_image}"
+    }
 
 
 # ===============================

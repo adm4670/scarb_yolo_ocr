@@ -18,7 +18,7 @@ LABELS_TRAIN = DATASET_DIR / "labels/train"
 LABELS_VAL = DATASET_DIR / "labels/val"
 
 # Classe única
-CLASSES = ["display"]
+CLASSES = ["display", "button"]
 
 # Cria pastas se não existirem
 for p in [IMAGES_TRAIN, IMAGES_VAL, LABELS_TRAIN, LABELS_VAL]:

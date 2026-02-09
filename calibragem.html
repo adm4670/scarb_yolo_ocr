@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dashboard – Sensor + Alicate Amperímetro</title>
+
+  <!-- Socket.IO -->
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+
+  <style>
+    body {
+      background: #0f172a;
+      color: #e5e7eb;
+      font-family: system-ui, sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+
+    h2 {
+      margin-bottom: 16px;
+    }
+
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      max-width: 1200px;
+      margin: auto;
+    }
+
+    .card {
+      background: #020617;
+      border-radius: 10px;
+      padding: 16px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.4);
+    }
+
+    video, img {
+      width: 100%;
+      border-radius: 8px;
+      margin-top: 10px;
+    }
+
+    .value {
+      font-size: 28px;
+      font-weight: bold;
+      margin-top: 8px;
+    }
+
+    button {
+      margin: 6px;
+      padding: 10px 16px;
+      font-size: 15px;
+      cursor: pointer;
+      border-radius: 6px;
+      border: none;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .label {
+      opacity: 0.7;
+      font-size: 14px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h2>⚡ Monitoramento – Sensor + Alicate Amperímetro</h2>
+
+  <div class="container">
+
+    <!-- ========================= -->
+    <!-- WEBSOCKET -->
+    <!-- ========================= -->
+    <div class="card">
+      <h3>📡 Dados do Sensor (WebSocket)</h3>
+
+      <div class="label">Dispositivo</div>
+      <div class="value" id="deviceName">—</div>
+
+      <div class="label">Corrente medida (sensor)</div>
+      <div class="value" id="sensorCurrent">— A</div>
+    </div>
+
+    <!-- ========================= -->
+    <!-- CAMERA + YOLO -->
+    <!-- ========================= -->
+    <div class="card">
+      <h3>📷 Alicate Amperímetro (YOLO)</h3>
+
+      <div class="label">Corrente detectada (câmera)</div>
+      <div class="value" id="cameraCurrent">— A</div>
+
+      <video id="video" autoplay playsinline></video>
+      <img id="result" style="display:none;" />
+
+      <br>
+
+      <button id="startBtn">▶️ Iniciar</button>
+      <button id="stopBtn" disabled>⏹ Parar</button>
+
+      <canvas id="capture" style="display:none;"></canvas>
+    </div>
+
+  </div>
+
+  <script>
+    /*********************************
+     *  WEBSOCKET
+     *********************************/
+    const deviceNameEl = document.getElementById("deviceName");
+    const sensorCurrentEl = document.getElementById("sensorCurrent");
+
+    const socket = io("https://app1.pe.senac.br", {
+      transports: ["websocket"],
+      reconnectionAttempts: 5,
+      timeout: 5000
+      // auth: { token: "SEU_TOKEN_SE_NECESSÁRIO" }
+    });
+
+    socket.on("connect", () => {
+      console.log("Conectado ao WebSocket:", socket.id);
+    });
+
+    socket.on("dashboard-notification", (data) => {
+      console.log("Payload WS:", data);
+
+      // Ajuste aqui se quiser outro identificador
+      deviceNameEl.textContent = data.modulo?.mac || "Desconhecido";
+
+      sensorCurrentEl.textContent =
+        Number(data.corrente_calculada).toFixed(2) + " A";
+    });
+
+    socket.on("connect_error", err => {
+      console.warn("Erro WS:", err.message);
+    });
+
+    /*********************************
+     *  CAMERA + YOLO
+     *********************************/
+    const video = document.getElementById("video");
+    const resultImg = document.getElementById("result");
+    const capture = document.getElementById("capture");
+    const ctx = capture.getContext("2d");
+
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const cameraCurrentEl = document.getElementById("cameraCurrent");
+
+    const BACKEND_URL = "http://localhost:8000/frame";
+    let interval = null;
+
+    navigator.mediaDevices.getUserMedia({
+      video: { width: 1280, height: 720 },
+      audio: false
+    })
+    .then(stream => video.srcObject = stream)
+    .catch(err => alert("Erro câmera: " + err));
+
+    async function sendFrame() {
+      if (!video.videoWidth) return;
+
+      capture.width = video.videoWidth;
+      capture.height = video.videoHeight;
+
+      ctx.drawImage(video, 0, 0);
+      const jpegBase64 = capture.toDataURL("image/jpeg", 0.85);
+
+      try {
+        const res = await fetch(BACKEND_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: jpegBase64 })
+        });
+
+        const data = await res.json();
+
+        if (data.image) {
+          resultImg.src = data.image;
+          resultImg.style.display = "block";
+          video.style.display = "none";
+        }
+
+        if (data.corrente !== undefined) {
+          cameraCurrentEl.textContent =
+            Number(data.corrente).toFixed(2) + " A";
+        }
+
+      } catch (err) {
+        console.error("Erro frame:", err);
+      }
+    }
+
+    startBtn.onclick = () => {
+      if (interval) return;
+      interval = setInterval(sendFrame, 150);
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+    };
+
+    stopBtn.onclick = () => {
+      clearInterval(interval);
+      interval = null;
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      resultImg.style.display = "none";
+      video.style.display = "block";
+    };
+  </script>
+
+</body>
+</html>
