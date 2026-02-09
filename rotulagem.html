@@ -29,7 +29,7 @@
       cursor: crosshair;
     }
 
-    button {
+    button, select {
       margin: 8px;
       padding: 10px 16px;
       font-size: 16px;
@@ -41,6 +41,16 @@
 <body>
 
 <h2>🖊 Rotulagem de Imagens - YOLO</h2>
+
+<label>
+  Classe atual:
+  <select id="classSelect">
+    <option value="0">📺 Display</option>
+    <option value="1">🔘 Botão</option>
+  </select>
+</label>
+
+<br><br>
 
 <div class="container">
   <img id="image" src="" alt="Imagem para rotulagem">
@@ -60,6 +70,7 @@ const ctx = canvas.getContext("2d");
 const nextBtn = document.getElementById("nextBtn");
 const submitBtn = document.getElementById("submitBtn");
 const deleteBtn = document.getElementById("deleteBtn");
+const classSelect = document.getElementById("classSelect");
 
 const BACKEND_NEXT = "http://localhost:8000/next_label";
 const BACKEND_LABEL = "http://localhost:8000/label";
@@ -71,7 +82,7 @@ let isDrawing = false;
 let currentFilename = "";
 
 // ===========================
-// Redimensiona o canvas para a imagem
+// Ajusta canvas ao tamanho da imagem
 // ===========================
 function resizeCanvas() {
   canvas.width = image.width;
@@ -80,21 +91,27 @@ function resizeCanvas() {
 }
 
 // ===========================
-// Desenhar todos os bounding boxes
+// Desenhar bounding boxes
 // ===========================
 function drawBoxes() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.strokeStyle = "lime";
-  ctx.lineWidth = 2;
-  ctx.fillStyle = "lime";
+
   boxes.forEach((b, idx) => {
+    ctx.strokeStyle = b.class_id === 0 ? "lime" : "cyan";
+    ctx.fillStyle   = ctx.strokeStyle;
+    ctx.lineWidth = 2;
+
     ctx.strokeRect(b.x, b.y, b.w, b.h);
-    ctx.fillText(`#${idx+1}`, b.x + 3, b.y + 12);
+    ctx.fillText(
+      `${idx + 1} - ${b.class_id === 0 ? "Display" : "Botão"}`,
+      b.x + 4,
+      b.y + 14
+    );
   });
 }
 
 // ===========================
-// Eventos do mouse para desenho
+// Mouse events
 // ===========================
 canvas.addEventListener("mousedown", (e) => {
   const rect = canvas.getBoundingClientRect();
@@ -105,26 +122,31 @@ canvas.addEventListener("mousedown", (e) => {
 
 canvas.addEventListener("mousemove", (e) => {
   if (!isDrawing) return;
+
   const rect = canvas.getBoundingClientRect();
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
-  const w = x - startX;
-  const h = y - startY;
 
   drawBoxes();
   ctx.strokeStyle = "red";
-  ctx.strokeRect(startX, startY, w, h);
+  ctx.strokeRect(startX, startY, x - startX, y - startY);
 });
 
 canvas.addEventListener("mouseup", (e) => {
   if (!isDrawing) return;
+
   const rect = canvas.getBoundingClientRect();
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
-  const w = x - startX;
-  const h = y - startY;
 
-  boxes.push({ x: startX, y: startY, w: w, h: h });
+  boxes.push({
+    x: startX,
+    y: startY,
+    w: x - startX,
+    h: y - startY,
+    class_id: Number(classSelect.value)
+  });
+
   isDrawing = false;
   drawBoxes();
 });
@@ -153,27 +175,26 @@ async function loadNextImage() {
 }
 
 // ===========================
-// Enviar labels para backend
+// Enviar labels (YOLO)
 // ===========================
 async function submitLabels() {
   if (!currentFilename) return;
-  const labels = boxes.map(b => ({
-    x: b.x / canvas.width,
-    y: b.y / canvas.height,
-    w: b.w / canvas.width,
-    h: b.h / canvas.height,
-    class_id: 0   // Ajuste conforme a classe desejada
-  }));
 
-  const payload = {
-    filename: currentFilename,
-    labels: labels
-  };
+  const labels = boxes.map(b => ({
+    class_id: b.class_id,
+    x: (b.x + b.w / 2) / canvas.width,
+    y: (b.y + b.h / 2) / canvas.height,
+    w: b.w / canvas.width,
+    h: b.h / canvas.height
+  }));
 
   await fetch(BACKEND_LABEL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
+    body: JSON.stringify({
+      filename: currentFilename,
+      labels
+    })
   });
 
   loadNextImage();
@@ -185,11 +206,10 @@ async function submitLabels() {
 async function deleteImage() {
   if (!currentFilename) return;
 
-  const payload = { filename: currentFilename };
   await fetch(BACKEND_DELETE, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
+    body: JSON.stringify({ filename: currentFilename })
   });
 
   loadNextImage();
@@ -202,11 +222,8 @@ nextBtn.onclick = loadNextImage;
 submitBtn.onclick = submitLabels;
 deleteBtn.onclick = deleteImage;
 
-// ===========================
-// Inicializa primeira imagem
-// ===========================
+// Inicializa
 loadNextImage();
-
 </script>
 
 </body>
